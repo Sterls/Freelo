@@ -1,22 +1,34 @@
 import chess
-from engine.bobby_eval import evaluate_fen
 
 INF = 10**9
-cache = {}
 
-def evaluate_fen(fen):
-    if fen in cache:
-        return cache[fen]
 
-    score = run_julia(fen)
-    cache[fen] = score
+# --- basic evaluation ---
+def evaluate(board: chess.Board):
+    if board.is_checkmate():
+        return -INF if board.turn else INF
+
+    if board.is_stalemate():
+        return 0
+
+    values = {
+        chess.PAWN: 100,
+        chess.KNIGHT: 320,
+        chess.BISHOP: 330,
+        chess.ROOK: 500,
+        chess.QUEEN: 900,
+    }
+
+    score = 0
+
+    for piece, value in values.items():
+        score += len(board.pieces(piece, chess.WHITE)) * value
+        score -= len(board.pieces(piece, chess.BLACK)) * value
+
     return score
 
-def evaluate(board: chess.Board):
-    # delegate to Julia
-    return evaluate_fen(board.fen())
 
-
+# --- minimax with alpha-beta ---
 def alphabeta(board, depth, alpha, beta, maximizing):
     if depth == 0 or board.is_game_over():
         return evaluate(board)
@@ -33,6 +45,7 @@ def alphabeta(board, depth, alpha, beta, maximizing):
 
             if beta <= alpha:
                 break
+
         return best
 
     else:
@@ -47,20 +60,22 @@ def alphabeta(board, depth, alpha, beta, maximizing):
 
             if beta <= alpha:
                 break
+
         return best
 
 
-def best_move(board, depth=3):
-    best_move = None
-    best_value = -INF
+def best_move(board, depth=2):
+    maximizing = board.turn == chess.WHITE
+    best = None
+    best_value = -INF if maximizing else INF
 
     for move in board.legal_moves:
         board.push(move)
-        val = alphabeta(board, depth - 1, -INF, INF, False)
+        val = alphabeta(board, depth - 1, -INF, INF, not maximizing)
         board.pop()
 
-        if val > best_value:
+        if maximizing and val > best_value or not maximizing and val < best_value:
             best_value = val
-            best_move = move
+            best = move
 
-    return best_move
+    return best
