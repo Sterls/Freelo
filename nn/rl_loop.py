@@ -54,6 +54,8 @@ def _prune_old_data(max_positions):
             break
         total += sizes[i]
 
+    keep_from = min(keep_from, len(files) - 1)  # always keep at least the newest file
+
     for f in files[:keep_from]:
         os.remove(f)
         print(f"  Pruned {f}")
