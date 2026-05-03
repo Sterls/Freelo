@@ -33,12 +33,14 @@ def _run(*args: str):
 
 
 def push(local_dir: str, remote_subdir: str = None):
-    """Sync local_dir up to Drive/<remote_subdir>."""
+    """Copy new/updated files from local_dir to Drive/<remote_subdir>.
+    Uses 'copy' (not 'sync') so files pruned locally are never deleted on Drive.
+    """
     if not _available():
         print("  [storage] rclone not found, skipping push")
         return
     subdir = remote_subdir or os.path.basename(local_dir.rstrip("/\\"))
-    _run("sync", local_dir, f"{REMOTE}:{subdir}", "--progress")
+    _run("copy", local_dir, f"{REMOTE}:{subdir}", "--progress")
     print(f"  [storage] pushed {local_dir} → {REMOTE}:{subdir}")
 
 
