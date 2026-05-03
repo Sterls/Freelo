@@ -3,7 +3,6 @@ import chess
 INF = 10**9
 
 
-# --- basic evaluation ---
 def evaluate(board: chess.Board):
     if board.is_checkmate():
         return -INF if board.turn else INF
@@ -28,16 +27,18 @@ def evaluate(board: chess.Board):
     return score
 
 
-# --- minimax with alpha-beta ---
-def alphabeta(board, depth, alpha, beta, maximizing):
-    if depth == 0 or board.is_game_over():
-        return evaluate(board)
+def alphabeta(board, depth, alpha, beta, maximizing, eval_fn=evaluate):
+    if board.is_game_over():
+        return evaluate(board)  # always exact for terminal nodes
+
+    if depth == 0:
+        return eval_fn(board)
 
     if maximizing:
         best = -INF
         for move in board.legal_moves:
             board.push(move)
-            val = alphabeta(board, depth - 1, alpha, beta, False)
+            val = alphabeta(board, depth - 1, alpha, beta, False, eval_fn)
             board.pop()
 
             best = max(best, val)
@@ -52,7 +53,7 @@ def alphabeta(board, depth, alpha, beta, maximizing):
         best = INF
         for move in board.legal_moves:
             board.push(move)
-            val = alphabeta(board, depth - 1, alpha, beta, True)
+            val = alphabeta(board, depth - 1, alpha, beta, True, eval_fn)
             board.pop()
 
             best = min(best, val)
@@ -64,14 +65,14 @@ def alphabeta(board, depth, alpha, beta, maximizing):
         return best
 
 
-def best_move(board, depth=2):
+def best_move(board, depth=3, eval_fn=evaluate):
     maximizing = board.turn == chess.WHITE
     best = None
-    best_value = -INF if maximizing else INF
+    best_value = -(INF + 1) if maximizing else (INF + 1)
 
     for move in board.legal_moves:
         board.push(move)
-        val = alphabeta(board, depth - 1, -INF, INF, not maximizing)
+        val = alphabeta(board, depth - 1, -INF, INF, not maximizing, eval_fn)
         board.pop()
 
         if maximizing and val > best_value or not maximizing and val < best_value:
