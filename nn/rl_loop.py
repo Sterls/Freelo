@@ -7,6 +7,7 @@ from engine.search import evaluate as static_eval
 from nn.model import ChessNet, make_eval_fn
 from nn.self_play import generate, play_game_vs
 from nn.train import train
+from nn import storage
 
 CHECKPOINT_DIR = "nn/checkpoints"
 DATA_DIR = "nn/data"
@@ -70,6 +71,11 @@ def run(
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
     os.makedirs(DATA_DIR, exist_ok=True)
 
+    # pull latest checkpoints and data from Drive before starting
+    print("Syncing from Drive...")
+    storage.pull(CHECKPOINT_DIR, "checkpoints")
+    storage.pull(DATA_DIR, "data")
+
     existing_gens = sorted(glob.glob(os.path.join(CHECKPOINT_DIR, "gen*.pt")))
     start_gen = len(existing_gens)
 
@@ -128,6 +134,11 @@ def run(
             print(f"  Promoted gen{gen:03d} → best.pt")
         else:
             print(f"  Not promoted — keeping previous best")
+
+        # 6. push checkpoints and data to Drive
+        print("Syncing to Drive...")
+        storage.push(CHECKPOINT_DIR, "checkpoints")
+        storage.push(DATA_DIR, "data")
 
     print("\nRL loop complete.")
 
