@@ -33,6 +33,26 @@ def play_game(eval_fn=evaluate, depth=1):
     return tensors, outcome
 
 
+def play_game_vs(eval_fn_white, eval_fn_black, depth=1):
+    """
+    Play a game with separate evaluators for each side.
+    Returns outcome from white's perspective: +1, -1, or 0.
+    """
+    board = chess.Board()
+
+    for _ in range(MAX_MOVES):
+        if board.is_game_over():
+            break
+        eval_fn = eval_fn_white if board.turn == chess.WHITE else eval_fn_black
+        move = best_move(board, depth=depth, eval_fn=eval_fn)
+        if move is None:
+            break
+        board.push(move)
+
+    result = board.result()
+    return 1.0 if result == "1-0" else -1.0 if result == "0-1" else 0.0
+
+
 def generate(n_games, output_path, eval_fn=evaluate, depth=1):
     """
     Play n_games self-play games and save the dataset to output_path.
