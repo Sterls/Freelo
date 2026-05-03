@@ -5,17 +5,9 @@ import chess
 
 from engine.features import board_to_tensor
 from engine.search import best_move, evaluate
+from nn.model import make_eval_fn  # noqa: F401 — re-exported for rl_loop convenience
 
 MAX_MOVES = 200
-
-
-def make_nn_eval(model, device="cpu"):
-    """Wrap a ChessNet into an eval_fn compatible with alphabeta."""
-    def eval_fn(board: chess.Board) -> float:
-        x = torch.from_numpy(board_to_tensor(board)).unsqueeze(0).to(device)
-        with torch.no_grad():
-            return model(x).item()
-    return eval_fn
 
 
 def play_game(eval_fn=evaluate, depth=1):

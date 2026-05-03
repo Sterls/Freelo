@@ -37,7 +37,26 @@ class ChessNet(nn.Module):
 
 def load(path: str, device: str = "cpu") -> ChessNet:
     model = ChessNet()
-    model.load_state_dict(torch.load(path, map_location=device))
+    model.load_state_dict(torch.load(path, map_location=device, weights_only=True))
     model.to(device)
     model.eval()
     return model
+
+
+def make_eval_fn(path_or_model, device: str = "cpu"):
+    """
+    Return an eval_fn(board) -> float for use in alphabeta.
+    Accepts a checkpoint path or an already-loaded ChessNet.
+    Inference always runs on CPU to avoid per-node GPU transfer overhead.
+    """
+    import numpy as np
+    from engine.features import board_to_tensor
+
+    model = load(path_or_model, device) if isinstance(path_or_model, str) else path_or_model.to(device).eval()
+
+    def eval_fn(board):
+        x = torch.from_numpy(board_to_tensor(board)).unsqueeze(0).to(device)
+        with torch.no_grad():
+            return model(x).item()
+
+    return eval_fn
