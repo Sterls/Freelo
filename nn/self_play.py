@@ -58,7 +58,7 @@ def generate(n_games, output_path, eval_fn=evaluate, depth=1):
         print(f"  game {i + 1}/{n_games}  moves={len(tensors)}  outcome={outcome:+.0f}")
 
     dataset = {
-        "tensors": torch.tensor(np.array(all_tensors), dtype=torch.float32),
+        "tensors": torch.tensor(np.array(all_tensors), dtype=torch.uint8),  # binary planes: 4x smaller than float32
         "outcomes": torch.tensor(all_outcomes, dtype=torch.float32),
     }
     torch.save(dataset, output_path)

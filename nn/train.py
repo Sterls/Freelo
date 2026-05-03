@@ -17,7 +17,7 @@ class ChessDataset(Dataset):
         return len(self.outcomes)
 
     def __getitem__(self, idx):
-        return self.tensors[idx], self.outcomes[idx]
+        return self.tensors[idx].float(), self.outcomes[idx]
 
 
 def load_dataset(data_path: str) -> Dataset:
