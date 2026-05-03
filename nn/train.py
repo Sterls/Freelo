@@ -51,7 +51,7 @@ def train(
         model.load_state_dict(torch.load(resume, map_location=device, weights_only=True))
         print(f"Resumed from {resume}")
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
     criterion = nn.MSELoss()
     os.makedirs(checkpoint_dir, exist_ok=True)
 

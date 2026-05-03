@@ -29,7 +29,7 @@ def evaluate(board: chess.Board):
 
 def alphabeta(board, depth, alpha, beta, maximizing, eval_fn=evaluate):
     if board.is_game_over():
-        return evaluate(board)  # always exact for terminal nodes
+        return evaluate(board)  # static eval for terminals — checkmate/stalemate values are outside NN range
 
     if depth == 0:
         return eval_fn(board)
