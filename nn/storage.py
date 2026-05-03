@@ -51,5 +51,11 @@ def pull(local_dir: str, remote_subdir: str = None):
         return
     subdir = remote_subdir or os.path.basename(local_dir.rstrip("/\\"))
     os.makedirs(local_dir, exist_ok=True)
-    _run("sync", f"{REMOTE}:{subdir}", local_dir, "--progress")
-    print(f"  [storage] pulled {REMOTE}:{subdir} → {local_dir}")
+    try:
+        _run("sync", f"{REMOTE}:{subdir}", local_dir, "--progress")
+        print(f"  [storage] pulled {REMOTE}:{subdir} → {local_dir}")
+    except RuntimeError as e:
+        if "not found" in str(e).lower():
+            print(f"  [storage] {REMOTE}:{subdir} doesn't exist yet, skipping pull")
+        else:
+            raise
