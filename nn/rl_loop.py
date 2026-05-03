@@ -64,6 +64,7 @@ def run(
     games_per_gen: int = 200,
     epochs_per_gen: int = 10,
     depth: int = 1,
+    epsilon: float = 0.15,
     pit_games: int = 20,
     promote_threshold: float = 0.55,
     max_positions: int = 50_000,
@@ -94,8 +95,8 @@ def run(
         # 1. self-play
         data_path = os.path.join(DATA_DIR, f"gen{gen:03d}.pt")
         eval_fn = current_eval if current_eval is not None else static_eval
-        print(f"Self-play: {games_per_gen} games, depth={depth}")
-        generate(games_per_gen, data_path, eval_fn=eval_fn, depth=depth)
+        print(f"Self-play: {games_per_gen} games, depth={depth}, epsilon={epsilon}")
+        generate(games_per_gen, data_path, eval_fn=eval_fn, depth=depth, epsilon=epsilon)
 
         # 2. rolling window
         _prune_old_data(max_positions)
@@ -152,6 +153,7 @@ if __name__ == "__main__":
     parser.add_argument("--epochs-per-gen",     type=int,   default=10)
     parser.add_argument("--depth",              type=int,   default=1)
     parser.add_argument("--pit-games",          type=int,   default=20)
+    parser.add_argument("--epsilon",             type=float, default=0.15)
     parser.add_argument("--promote-threshold",  type=float, default=0.55)
     parser.add_argument("--max-positions",      type=int,   default=50_000)
     args = parser.parse_args()
@@ -161,6 +163,7 @@ if __name__ == "__main__":
         games_per_gen=args.games_per_gen,
         epochs_per_gen=args.epochs_per_gen,
         depth=args.depth,
+        epsilon=args.epsilon,
         pit_games=args.pit_games,
         promote_threshold=args.promote_threshold,
         max_positions=args.max_positions,
