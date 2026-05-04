@@ -8,6 +8,8 @@ from nn.self_play import generate, play_game_vs
 from nn.train import train
 from nn import storage
 
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
 CHECKPOINT_DIR = "nn/checkpoints"
 DATA_DIR = "nn/data"
 BEST_CHECKPOINT = os.path.join(CHECKPOINT_DIR, "best.pt")
@@ -69,6 +71,7 @@ def run(
     pit_simulations: int = 25,
     promote_threshold: float = 0.55,
     max_positions: int = 200_000,
+    n_workers: int = 1,
 ):
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -80,11 +83,12 @@ def run(
     existing_gens = sorted(glob.glob(os.path.join(CHECKPOINT_DIR, "gen*.pt")))
     start_gen = len(existing_gens)
 
+    print(f"Device: {DEVICE}")
     if os.path.exists(BEST_CHECKPOINT):
-        current_model = load_model(BEST_CHECKPOINT)
+        current_model = load_model(BEST_CHECKPOINT, device=DEVICE)
         print(f"Resuming from {BEST_CHECKPOINT}")
     else:
-        current_model = ChessNet().eval()
+        current_model = ChessNet().to(DEVICE).eval()
         print("No checkpoint — bootstrapping with random model")
 
     for gen in range(start_gen, start_gen + generations):
@@ -94,8 +98,8 @@ def run(
 
         # 1. Self-play
         data_path = os.path.join(DATA_DIR, f"gen{gen:03d}.pt")
-        print(f"Self-play: {games_per_gen} games, {n_simulations} sims/move")
-        generate(games_per_gen, data_path, current_model, n_simulations)
+        print(f"Self-play: {games_per_gen} games, {n_simulations} sims/move, {n_workers} workers")
+        generate(games_per_gen, data_path, current_model, n_simulations, n_workers)
 
         # 2. Rolling window
         _prune_old_data(max_positions)
@@ -117,7 +121,7 @@ def run(
         print(f"Saved {gen_ckpt}")
 
         # 4. Pit
-        new_model = new_model.eval()
+        new_model = new_model.to(DEVICE).eval()
         if pit_games == 0:
             promote = True
             print("  Auto-promoting (pit disabled)")
@@ -154,6 +158,7 @@ if __name__ == "__main__":
     parser.add_argument("--pit-simulations",   type=int,   default=25)
     parser.add_argument("--promote-threshold", type=float, default=0.55)
     parser.add_argument("--max-positions",     type=int,   default=200_000)
+    parser.add_argument("--n-workers",         type=int,   default=1)
     args = parser.parse_args()
 
     run(
@@ -165,4 +170,5 @@ if __name__ == "__main__":
         pit_simulations=args.pit_simulations,
         promote_threshold=args.promote_threshold,
         max_positions=args.max_positions,
+        n_workers=args.n_workers,
     )

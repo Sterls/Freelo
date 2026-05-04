@@ -1,5 +1,6 @@
 import math
 import os
+import multiprocessing as mp
 import numpy as np
 import torch
 import chess
@@ -82,18 +83,41 @@ def play_game_vs(model_white, model_black, n_simulations: int = 25) -> float:
     return 0.0
 
 
-def generate(n_games: int, output_path: str, model, n_simulations: int = 50):
+def _worker_play_game(args):
+    """Worker entry point for parallel self-play (must be module-level for pickling)."""
+    state_dict, n_simulations = args
+    from nn.model import ChessNet
+    model = ChessNet()
+    model.load_state_dict(state_dict)
+    model.eval()
+    return play_game(model, n_simulations)
+
+
+def generate(n_games: int, output_path: str, model, n_simulations: int = 50, n_workers: int = 1):
     """Play n_games self-play games and save dataset."""
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
 
     all_tensors, all_policies, all_outcomes = [], [], []
 
-    for i in range(n_games):
-        tensors, policies, outcome = play_game(model, n_simulations)
-        all_tensors.extend(tensors)
-        all_policies.extend(policies)
-        all_outcomes.extend([outcome] * len(tensors))
-        print(f"  game {i + 1}/{n_games}  moves={len(tensors)}  outcome={outcome:+.3f}")
+    if n_workers > 1:
+        state_dict = {k: v.cpu() for k, v in model.state_dict().items()}
+        args = [(state_dict, n_simulations)] * n_games
+        ctx = mp.get_context("spawn")
+        with ctx.Pool(processes=n_workers) as pool:
+            for i, (tensors, policies, outcome) in enumerate(
+                pool.imap_unordered(_worker_play_game, args)
+            ):
+                all_tensors.extend(tensors)
+                all_policies.extend(policies)
+                all_outcomes.extend([outcome] * len(tensors))
+                print(f"  game {i + 1}/{n_games}  moves={len(tensors)}  outcome={outcome:+.3f}")
+    else:
+        for i in range(n_games):
+            tensors, policies, outcome = play_game(model, n_simulations)
+            all_tensors.extend(tensors)
+            all_policies.extend(policies)
+            all_outcomes.extend([outcome] * len(tensors))
+            print(f"  game {i + 1}/{n_games}  moves={len(tensors)}  outcome={outcome:+.3f}")
 
     dataset = {
         "tensors": torch.tensor(np.array(all_tensors), dtype=torch.uint8),

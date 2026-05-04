@@ -40,14 +40,16 @@ def _infer(board: chess.Board, model) -> tuple:
     """
     Run the network. Returns (value, policy) where value is from the
     current player's perspective (+1 = current player wins).
+    Automatically uses the device the model lives on.
     """
-    x = torch.from_numpy(board_to_tensor(board)).unsqueeze(0).float()
+    device = next(model.parameters()).device
+    x = torch.from_numpy(board_to_tensor(board)).unsqueeze(0).float().to(device)
     with torch.no_grad():
         value, logits = model(x)
     v = value.item()
     if board.turn == chess.BLACK:
         v = -v
-    return v, legal_policy(board, logits.squeeze(0))
+    return v, legal_policy(board, logits.squeeze(0).cpu())
 
 
 def _terminal_value(board: chess.Board) -> float:
