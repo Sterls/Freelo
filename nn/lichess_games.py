@@ -21,7 +21,7 @@ from engine.search import evaluate as static_eval
 STATIC_EVAL_SCALE = 600
 
 
-def _outcome(game) -> float | None:
+def _outcome(game):
     result = game.headers.get("Result", "*")
     if result == "1-0":   return  1.0
     if result == "0-1":   return -1.0
