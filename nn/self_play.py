@@ -73,7 +73,13 @@ def play_game_vs(model_white, model_black, n_simulations: int = 25) -> float:
         board.push(move)
 
     result = board.result()
-    return 1.0 if result == "1-0" else -1.0 if result == "0-1" else 0.0
+    if result == "1-0":
+        return 1.0
+    elif result == "0-1":
+        return -1.0
+    elif result == "*":
+        return math.tanh(static_eval(board) / STATIC_EVAL_SCALE)
+    return 0.0
 
 
 def generate(n_games: int, output_path: str, model, n_simulations: int = 50):
