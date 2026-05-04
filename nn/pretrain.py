@@ -58,7 +58,7 @@ def run(
     print(f"\nPretrained model saved → {BEST_CHECKPOINT}")
 
     storage.push(CHECKPOINT_DIR, "checkpoints")
-    storage.push(DATA_DIR, "data")
+    # Lichess data stays local — not pushed to Drive
     print("Done. Run nn.rl_loop to continue with self-play RL.")
 
 
