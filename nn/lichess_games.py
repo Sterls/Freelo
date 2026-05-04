@@ -3,10 +3,11 @@ Generate supervised training data from human Lichess PGN games.
 
 Policy target: one-hot on the move actually played.
 Value target:  game outcome from white's perspective (+1 / -1 / 0).
+
+Data is saved in chunks to keep memory usage bounded.
 """
 import bz2
 import gzip
-import math
 import os
 
 import chess
@@ -16,16 +17,13 @@ import torch
 
 from engine.features import board_to_tensor
 from engine.moves import policy_to_tensor
-from engine.search import evaluate as static_eval
-
-STATIC_EVAL_SCALE = 600
 
 
 def _outcome(game):
     result = game.headers.get("Result", "*")
-    if result == "1-0":   return  1.0
-    if result == "0-1":   return -1.0
-    if result == "1/2-1/2": return 0.0
+    if result == "1-0":       return  1.0
+    if result == "0-1":       return -1.0
+    if result == "1/2-1/2":  return  0.0
     return None
 
 
@@ -53,31 +51,44 @@ def _open_pgn(source):
             raw = open(source, "rb")
             return io.TextIOWrapper(ctx.stream_reader(raw), encoding="utf-8", errors="ignore"), True
         return open(source, encoding="utf-8", errors="ignore"), True
-    return source, False  # already a file object, caller manages it
+    return source, False
+
+
+def _save_chunk(tensors, policies, outcomes, path):
+    dataset = {
+        "tensors":  torch.tensor(np.array(tensors), dtype=torch.uint8),
+        "policies": torch.stack(policies),
+        "outcomes": torch.tensor(outcomes, dtype=torch.float32),
+    }
+    torch.save(dataset, path)
+    return len(outcomes)
 
 
 def generate_from_pgn(
     pgn_source,
-    output_path: str,
+    output_dir: str,
     n_games: int = 10_000,
     min_elo: int = 1500,
     min_moves: int = 10,
     max_moves: int = 60,
-) -> dict:
+    chunk_size: int = 5_000,
+) -> str:
     """
-    Parse a PGN file and produce a training dataset.
+    Parse a PGN file and save training data as chunked .pt files.
 
-    pgn_source  — path to a .pgn, .pgn.bz2, or .pgn.gz file, or a file object.
-    n_games     — stop after this many accepted games.
-    min_elo     — skip games where either player is below this rating.
-    min_moves   — skip very short games.
-    max_moves   — truncate games longer than this (half-moves).
+    Saves chunk_size games per file to keep memory bounded (~4 GB/chunk).
+    Returns a glob pattern matching all saved files.
+
+    pgn_source  — path to .pgn / .pgn.bz2 / .pgn.gz / .pgn.zst, or file object.
+    output_dir  — directory to write pretrain_NNN.pt chunks into.
+    n_games     — total games to accept.
+    chunk_size  — games per chunk file (controls peak RAM usage).
     """
-    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
 
     pgn_file, should_close = _open_pgn(pgn_source)
-    all_tensors, all_policies, all_outcomes = [], [], []
-    used = skipped = 0
+    chunk_tensors, chunk_policies, chunk_outcomes = [], [], []
+    used = skipped = chunk_idx = total_positions = 0
 
     try:
         while used < n_games:
@@ -104,30 +115,41 @@ def generate_from_pgn(
                 skipped += 1
                 continue
 
-            all_tensors.extend(game_tensors)
-            all_policies.extend(game_policies)
-            all_outcomes.extend([outcome] * len(game_tensors))
+            chunk_tensors.extend(game_tensors)
+            chunk_policies.extend(game_policies)
+            chunk_outcomes.extend([outcome] * len(game_tensors))
             used += 1
 
             if used % 500 == 0:
-                print(f"  {used}/{n_games} games  ({len(all_outcomes):,} positions)")
+                print(f"  {used}/{n_games} games  ({total_positions + len(chunk_outcomes):,} positions)")
+
+            # Flush chunk to disk
+            if used % chunk_size == 0:
+                path = os.path.join(output_dir, f"pretrain_{chunk_idx:03d}.pt")
+                n = _save_chunk(chunk_tensors, chunk_policies, chunk_outcomes, path)
+                total_positions += n
+                print(f"  Saved chunk {chunk_idx} → {path}  ({n:,} positions)")
+                chunk_tensors, chunk_policies, chunk_outcomes = [], [], []
+                chunk_idx += 1
 
     finally:
         if should_close:
             pgn_file.close()
 
-    if not all_tensors:
+    # Save any remaining positions
+    if chunk_tensors:
+        path = os.path.join(output_dir, f"pretrain_{chunk_idx:03d}.pt")
+        n = _save_chunk(chunk_tensors, chunk_policies, chunk_outcomes, path)
+        total_positions += n
+        print(f"  Saved chunk {chunk_idx} → {path}  ({n:,} positions)")
+
+    if total_positions == 0:
         raise RuntimeError(
             "No valid games found — check your PGN file and filters.\n"
             "Get data from: https://database.lichess.org"
         )
 
-    dataset = {
-        "tensors":  torch.tensor(np.array(all_tensors), dtype=torch.uint8),
-        "policies": torch.stack(all_policies),
-        "outcomes": torch.tensor(all_outcomes, dtype=torch.float32),
-    }
-    torch.save(dataset, output_path)
-    print(f"Saved {len(all_outcomes):,} positions from {used} games → {output_path}")
-    print(f"(Skipped {skipped} games due to filters)")
-    return dataset
+    glob_pattern = os.path.join(output_dir, "pretrain_*.pt")
+    print(f"\nTotal: {total_positions:,} positions from {used} games  (skipped {skipped})")
+    print(f"Data glob: {glob_pattern}")
+    return glob_pattern
