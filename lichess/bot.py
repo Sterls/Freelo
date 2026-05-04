@@ -11,20 +11,20 @@ def _to_ms(t) -> int:
     return int(t.total_seconds() * 1000) if hasattr(t, "total_seconds") else int(t)
 
 
-def _pick_simulations(my_time_ms: int) -> int:
-    """Scale MCTS simulations with remaining clock time."""
-    if my_time_ms < 10_000:
-        return 25
-    if my_time_ms < 30_000:
-        return 35
-    return 50
+def _think_time_ms(my_time_ms: int, fullmove_number: int) -> int:
+    """Allocate thinking time based on remaining clock and move number."""
+    moves_left = max(15, 50 - fullmove_number)
+    budget = my_time_ms / moves_left * 0.9
+    return int(min(max(budget, 100), 5_000))
 
 
 def _pick_depth(my_time_ms: int) -> int:
     """Fallback depth for alpha-beta when no model is loaded."""
     if my_time_ms < 10_000:
         return 1
-    return 2
+    if my_time_ms < 50_000:
+        return 3
+    return 5
 
 
 class LichessBot:
@@ -74,9 +74,9 @@ class LichessBot:
 
     def _pick_move(self, board: chess.Board, my_time_ms: int):
         if self.model is not None:
-            from engine.mcts import best_move as mcts_best_move
-            n_sims = _pick_simulations(my_time_ms)
-            return mcts_best_move(board, self.model, n_sims)
+            from engine.mcts import best_move_timed
+            think_ms = _think_time_ms(my_time_ms, board.fullmove_number)
+            return best_move_timed(board, self.model, think_ms)
         depth = _pick_depth(my_time_ms)
         return alphabeta_best_move(board, depth=depth, eval_fn=evaluate)
 

@@ -1,4 +1,5 @@
 import math
+import time
 import chess
 import torch
 import numpy as np
@@ -125,3 +126,50 @@ def best_move(board: chess.Board, model, n_simulations: int = 50):
     """Select best move by MCTS visit counts (no exploration noise)."""
     policy = search(board, model, n_simulations, add_noise=False)
     return max(policy, key=policy.get) if policy else None
+
+
+def best_move_timed(board: chess.Board, model, think_ms: int):
+    """Run MCTS for think_ms milliseconds and return the best move."""
+    if board.is_game_over():
+        return None
+
+    root = MCTSNode()
+    v, policy = _infer(board, model)
+
+    for move, prior in policy.items():
+        root.children[move] = MCTSNode(parent=root, move=move, prior=prior)
+    root.expanded = True
+    root.N = 1
+    root.W = v
+
+    deadline = time.monotonic() + think_ms / 1000
+    sims = 0
+    while time.monotonic() < deadline:
+        node = root
+        sim_board = board.copy(stack=False)
+        path = [node]
+
+        while node.expanded and not sim_board.is_game_over():
+            node = node.best_child()
+            sim_board.push(node.move)
+            path.append(node)
+
+        if sim_board.is_game_over():
+            leaf_v = _terminal_value(sim_board)
+        else:
+            leaf_v, child_policy = _infer(sim_board, model)
+            for move, prior in child_policy.items():
+                node.children[move] = MCTSNode(parent=node, move=move, prior=prior)
+            node.expanded = True
+
+        v = leaf_v
+        for n in reversed(path):
+            n.N += 1
+            n.W += v
+            v = -v
+        sims += 1
+
+    print(f"  [{sims} sims in {think_ms}ms]")
+    if not root.children:
+        return None
+    return max(root.children, key=lambda m: root.children[m].N)
