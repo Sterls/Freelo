@@ -2,6 +2,18 @@ import chess
 import berserk
 from engine.search import best_move, evaluate
 
+GAME_OVER_STATUSES = {"mate", "resign", "stalemate", "timeout", "draw",
+                      "outoftime", "cheat", "noStart", "unknownFinish", "aborted"}
+
+
+def _pick_depth(my_time_ms: int) -> int:
+    """Choose search depth based on remaining clock time."""
+    if my_time_ms < 10_000:   # under 10s: instant
+        return 1
+    if my_time_ms < 30_000:   # under 30s: shallow
+        return 2
+    return 2                   # default: depth 2 keeps moves under ~1s
+
 
 class LichessBot:
     def __init__(self, token: str, eval_fn=None):
@@ -50,18 +62,28 @@ class LichessBot:
 
     def play_game(self, game_id: str):
         is_white = None
+        my_time_ms = 180_000
 
         for state in self.client.bots.stream_game_state(game_id):
 
             if state["type"] == "gameFull":
                 is_white = (state["white"]["id"] == self.my_id)
                 moves = state["state"]["moves"]
+                status = state["state"].get("status", "started")
+                my_time_ms = state["state"]["wtime" if is_white else "btime"]
 
             elif state["type"] == "gameState":
                 moves = state["moves"]
+                status = state.get("status", "started")
+                if is_white is not None:
+                    my_time_ms = state["wtime" if is_white else "btime"]
 
             else:
                 continue
+
+            if status in GAME_OVER_STATUSES:
+                print(f"Game over: {status}")
+                break
 
             board = chess.Board()
 
@@ -75,8 +97,13 @@ class LichessBot:
             if board.turn != is_white:
                 continue
 
-            move = best_move(board, depth=3, eval_fn=self.eval_fn)
+            depth = _pick_depth(my_time_ms)
+            move = best_move(board, depth=depth, eval_fn=self.eval_fn)
 
             if move:
-                print("Playing:", move.uci())
-                self.client.bots.make_move(game_id, move.uci())
+                print(f"Playing: {move.uci()}  (depth={depth}, time={my_time_ms//1000}s)")
+                try:
+                    self.client.bots.make_move(game_id, move.uci())
+                except berserk.exceptions.ResponseError as e:
+                    print(f"make_move failed: {e}")
+                    break
