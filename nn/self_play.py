@@ -1,3 +1,4 @@
+import math
 import os
 import numpy as np
 import torch
@@ -6,9 +7,11 @@ import chess
 from engine.features import board_to_tensor
 from engine.moves import policy_to_tensor
 from engine import mcts
+from engine.search import evaluate as static_eval
 
-MAX_MOVES = 200
+MAX_MOVES = 100
 TEMP_THRESHOLD = 30  # sample proportionally for first N moves, then argmax
+STATIC_EVAL_SCALE = 600  # centipawns; tanh(600cp/600) ≈ 0.76 for a queen-up position
 
 
 def play_game(model, n_simulations: int = 50) -> tuple:
@@ -44,7 +47,15 @@ def play_game(model, n_simulations: int = 50) -> tuple:
         board.push(move)
 
     result = board.result()
-    outcome = 1.0 if result == "1-0" else -1.0 if result == "0-1" else 0.0
+    if result == "1-0":
+        outcome = 1.0
+    elif result == "0-1":
+        outcome = -1.0
+    elif result == "*":
+        # Truncated by move limit — use material balance as a proxy signal
+        outcome = math.tanh(static_eval(board) / STATIC_EVAL_SCALE)
+    else:
+        outcome = 0.0  # genuine draw (stalemate, 50-move, repetition)
     return tensors, policy_targets, outcome
 
 
@@ -76,7 +87,7 @@ def generate(n_games: int, output_path: str, model, n_simulations: int = 50):
         all_tensors.extend(tensors)
         all_policies.extend(policies)
         all_outcomes.extend([outcome] * len(tensors))
-        print(f"  game {i + 1}/{n_games}  moves={len(tensors)}  outcome={outcome:+.0f}")
+        print(f"  game {i + 1}/{n_games}  moves={len(tensors)}  outcome={outcome:+.3f}")
 
     dataset = {
         "tensors": torch.tensor(np.array(all_tensors), dtype=torch.uint8),
