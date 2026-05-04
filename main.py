@@ -16,5 +16,5 @@ if __name__ == "__main__":
         print("No checkpoint found, using static evaluator")
 
     bot = LichessBot(TOKEN, model=model)
-    bot.challenge_bots(1)
+    bot.challenge_bots(10)
     bot.run()
