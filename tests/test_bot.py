@@ -44,7 +44,7 @@ def _make_bot():
         bot = LichessBot.__new__(LichessBot)
         bot.client = client
         bot.my_id = "testbot"
-        bot.eval_fn = None
+        bot.model = None
         return bot, client
 
 
@@ -116,8 +116,7 @@ def test_play_game_skips_opponents_turn():
 def test_play_game_makes_move_on_our_turn():
     """Bot must call make_move when it is the bot's turn."""
     bot, client = _make_bot()
-    from engine.search import evaluate
-    bot.eval_fn = evaluate
+    bot.model = None  # uses alpha-beta fallback
 
     # Bot is white; starting position is white to move
     states = [
@@ -142,10 +141,8 @@ def test_play_game_makes_move_on_our_turn():
 
 def test_play_game_make_move_error_does_not_crash():
     """A ResponseError from make_move must not propagate."""
-    import berserk.exceptions
     bot, client = _make_bot()
-    from engine.search import evaluate
-    bot.eval_fn = evaluate
+    bot.model = None
 
     states = [
         {

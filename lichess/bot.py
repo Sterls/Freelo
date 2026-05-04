@@ -1,6 +1,6 @@
 import chess
 import berserk
-from engine.search import best_move, evaluate
+from engine.search import best_move as alphabeta_best_move, evaluate
 
 GAME_OVER_STATUSES = {"mate", "resign", "stalemate", "timeout", "draw",
                       "outoftime", "cheat", "noStart", "unknownFinish", "aborted"}
@@ -11,21 +11,28 @@ def _to_ms(t) -> int:
     return int(t.total_seconds() * 1000) if hasattr(t, "total_seconds") else int(t)
 
 
+def _pick_simulations(my_time_ms: int) -> int:
+    """Scale MCTS simulations with remaining clock time."""
+    if my_time_ms < 10_000:
+        return 25
+    if my_time_ms < 30_000:
+        return 35
+    return 50
+
+
 def _pick_depth(my_time_ms: int) -> int:
-    """Choose search depth based on remaining clock time."""
-    if my_time_ms < 10_000:   # under 10s: instant
+    """Fallback depth for alpha-beta when no model is loaded."""
+    if my_time_ms < 10_000:
         return 1
-    if my_time_ms < 30_000:   # under 30s: shallow
-        return 2
-    return 2                   # default: depth 2 keeps moves under ~1s
+    return 2
 
 
 class LichessBot:
-    def __init__(self, token: str, eval_fn=None):
+    def __init__(self, token: str, model=None):
         session = berserk.TokenSession(token)
         self.client = berserk.Client(session=session)
         self.my_id = self.client.account.get()["id"]
-        self.eval_fn = eval_fn or evaluate
+        self.model = model  # ChessNet or None
 
     def run(self):
         print("Bot running...")
@@ -65,6 +72,14 @@ class LichessBot:
             except berserk.exceptions.ResponseError as e:
                 print(f"Could not challenge {bot['id']}:", e)
 
+    def _pick_move(self, board: chess.Board, my_time_ms: int):
+        if self.model is not None:
+            from engine.mcts import best_move as mcts_best_move
+            n_sims = _pick_simulations(my_time_ms)
+            return mcts_best_move(board, self.model, n_sims)
+        depth = _pick_depth(my_time_ms)
+        return alphabeta_best_move(board, depth=depth, eval_fn=evaluate)
+
     def play_game(self, game_id: str):
         is_white = None
         my_time_ms = 180_000
@@ -91,7 +106,6 @@ class LichessBot:
                 break
 
             board = chess.Board()
-
             if moves:
                 for m in moves.split():
                     board.push_uci(m)
@@ -102,11 +116,10 @@ class LichessBot:
             if board.turn != is_white:
                 continue
 
-            depth = _pick_depth(my_time_ms)
-            move = best_move(board, depth=depth, eval_fn=self.eval_fn)
+            move = self._pick_move(board, my_time_ms)
 
             if move:
-                print(f"Playing: {move.uci()}  (depth={depth}, time={my_time_ms//1000}s)")
+                print(f"Playing: {move.uci()}  (time={my_time_ms//1000}s)")
                 try:
                     self.client.bots.make_move(game_id, move.uci())
                 except Exception as e:

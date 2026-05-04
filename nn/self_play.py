@@ -1,59 +1,62 @@
 import os
-import random
 import numpy as np
 import torch
 import chess
 
 from engine.features import board_to_tensor
-from engine.search import best_move, evaluate
-from nn.model import make_eval_fn  # noqa: F401 — re-exported for rl_loop convenience
+from engine.moves import policy_to_tensor
+from engine import mcts
 
 MAX_MOVES = 200
+TEMP_THRESHOLD = 30  # sample proportionally for first N moves, then argmax
 
 
-def _pick_move(board, eval_fn, depth, epsilon):
-    """Pick a move epsilon-greedily: random with prob epsilon, best otherwise."""
-    if epsilon > 0 and random.random() < epsilon:
-        return random.choice(list(board.legal_moves))
-    return best_move(board, depth=depth, eval_fn=eval_fn)
-
-
-def play_game(eval_fn=evaluate, depth=1, epsilon=0.15):
+def play_game(model, n_simulations: int = 50) -> tuple:
     """
-    Play one self-play game. Returns (tensors, outcome).
+    Play one self-play game using MCTS.
+    Returns (tensors, policy_targets, outcome).
     outcome: +1 white wins, -1 black wins, 0 draw.
-    epsilon: probability of playing a random move (breaks repetition cycles).
     """
     board = chess.Board()
     tensors = []
+    policy_targets = []
 
-    for _ in range(MAX_MOVES):
+    for move_num in range(MAX_MOVES):
         if board.is_game_over():
             break
-        tensors.append(board_to_tensor(board))
-        move = _pick_move(board, eval_fn, depth, epsilon)
-        if move is None:
+
+        policy = mcts.search(board, model, n_simulations, add_noise=True)
+        if not policy:
             break
+
+        tensors.append(board_to_tensor(board))
+        policy_targets.append(policy_to_tensor(policy))
+
+        moves = list(policy.keys())
+        probs = np.array([policy[m] for m in moves], dtype=np.float64)
+        probs /= probs.sum()
+
+        if move_num < TEMP_THRESHOLD:
+            move = moves[np.random.choice(len(moves), p=probs)]
+        else:
+            move = moves[probs.argmax()]
+
         board.push(move)
 
     result = board.result()
     outcome = 1.0 if result == "1-0" else -1.0 if result == "0-1" else 0.0
+    return tensors, policy_targets, outcome
 
-    return tensors, outcome
 
-
-def play_game_vs(eval_fn_white, eval_fn_black, depth=1):
-    """
-    Play a game with separate evaluators for each side (no epsilon — used for pit).
-    Returns outcome from white's perspective: +1, -1, or 0.
-    """
+def play_game_vs(model_white, model_black, n_simulations: int = 25) -> float:
+    """Pit two models. Returns outcome from white's perspective (+1/-1/0)."""
     board = chess.Board()
 
     for _ in range(MAX_MOVES):
         if board.is_game_over():
             break
-        eval_fn = eval_fn_white if board.turn == chess.WHITE else eval_fn_black
-        move = best_move(board, depth=depth, eval_fn=eval_fn)
+        model = model_white if board.turn == chess.WHITE else model_black
+        move = mcts.best_move(board, model, n_simulations)
         if move is None:
             break
         board.push(move)
@@ -62,31 +65,24 @@ def play_game_vs(eval_fn_white, eval_fn_black, depth=1):
     return 1.0 if result == "1-0" else -1.0 if result == "0-1" else 0.0
 
 
-def generate(n_games, output_path, eval_fn=evaluate, depth=1, epsilon=0.15):
-    """
-    Play n_games self-play games and save the dataset to output_path.
-    Dataset: dict with 'tensors' (N, 13, 8, 8) and 'outcomes' (N,).
-    """
+def generate(n_games: int, output_path: str, model, n_simulations: int = 50):
+    """Play n_games self-play games and save dataset."""
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
 
-    all_tensors = []
-    all_outcomes = []
+    all_tensors, all_policies, all_outcomes = [], [], []
 
     for i in range(n_games):
-        tensors, outcome = play_game(eval_fn=eval_fn, depth=depth, epsilon=epsilon)
+        tensors, policies, outcome = play_game(model, n_simulations)
         all_tensors.extend(tensors)
+        all_policies.extend(policies)
         all_outcomes.extend([outcome] * len(tensors))
         print(f"  game {i + 1}/{n_games}  moves={len(tensors)}  outcome={outcome:+.0f}")
 
     dataset = {
         "tensors": torch.tensor(np.array(all_tensors), dtype=torch.uint8),
+        "policies": torch.stack(all_policies),
         "outcomes": torch.tensor(all_outcomes, dtype=torch.float32),
     }
     torch.save(dataset, output_path)
     print(f"Saved {len(all_outcomes)} positions → {output_path}")
     return dataset
-
-
-if __name__ == "__main__":
-    print("Generating 20 games with static evaluator...")
-    generate(20, "nn/data/gen0.pt", depth=1)
