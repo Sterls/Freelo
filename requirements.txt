@@ -2,3 +2,4 @@ python-chess
 berserk
 numpy
 torch
+pytest

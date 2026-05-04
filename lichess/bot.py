@@ -109,6 +109,6 @@ class LichessBot:
                 print(f"Playing: {move.uci()}  (depth={depth}, time={my_time_ms//1000}s)")
                 try:
                     self.client.bots.make_move(game_id, move.uci())
-                except berserk.exceptions.ResponseError as e:
+                except Exception as e:
                     print(f"make_move failed: {e}")
                     break
