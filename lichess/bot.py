@@ -70,13 +70,13 @@ class LichessBot:
                 is_white = (state["white"]["id"] == self.my_id)
                 moves = state["state"]["moves"]
                 status = state["state"].get("status", "started")
-                my_time_ms = state["state"]["wtime" if is_white else "btime"]
+                my_time_ms = int(state["state"]["wtime" if is_white else "btime"].total_seconds() * 1000)
 
             elif state["type"] == "gameState":
                 moves = state["moves"]
                 status = state.get("status", "started")
                 if is_white is not None:
-                    my_time_ms = state["wtime" if is_white else "btime"]
+                    my_time_ms = int(state["wtime" if is_white else "btime"].total_seconds() * 1000)
 
             else:
                 continue
