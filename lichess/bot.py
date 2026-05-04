@@ -6,6 +6,11 @@ GAME_OVER_STATUSES = {"mate", "resign", "stalemate", "timeout", "draw",
                       "outoftime", "cheat", "noStart", "unknownFinish", "aborted"}
 
 
+def _to_ms(t) -> int:
+    """Normalize berserk clock value to milliseconds (int or timedelta)."""
+    return int(t.total_seconds() * 1000) if hasattr(t, "total_seconds") else int(t)
+
+
 def _pick_depth(my_time_ms: int) -> int:
     """Choose search depth based on remaining clock time."""
     if my_time_ms < 10_000:   # under 10s: instant
@@ -70,13 +75,13 @@ class LichessBot:
                 is_white = (state["white"]["id"] == self.my_id)
                 moves = state["state"]["moves"]
                 status = state["state"].get("status", "started")
-                my_time_ms = int(state["state"]["wtime" if is_white else "btime"].total_seconds() * 1000)
+                my_time_ms = _to_ms(state["state"]["wtime" if is_white else "btime"])
 
             elif state["type"] == "gameState":
                 moves = state["moves"]
                 status = state.get("status", "started")
                 if is_white is not None:
-                    my_time_ms = int(state["wtime" if is_white else "btime"].total_seconds() * 1000)
+                    my_time_ms = _to_ms(state["wtime" if is_white else "btime"])
 
             else:
                 continue
