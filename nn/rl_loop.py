@@ -8,6 +8,8 @@ from nn.self_play import generate, play_game_vs
 from nn.train import train
 from nn import storage
 
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
 CHECKPOINT_DIR = "nn/checkpoints"
 DATA_DIR = "nn/data"
 BEST_CHECKPOINT = os.path.join(CHECKPOINT_DIR, "best.pt")
@@ -80,11 +82,12 @@ def run(
     existing_gens = sorted(glob.glob(os.path.join(CHECKPOINT_DIR, "gen*.pt")))
     start_gen = len(existing_gens)
 
+    print(f"Device: {DEVICE}")
     if os.path.exists(BEST_CHECKPOINT):
-        current_model = load_model(BEST_CHECKPOINT)
+        current_model = load_model(BEST_CHECKPOINT, device=DEVICE)
         print(f"Resuming from {BEST_CHECKPOINT}")
     else:
-        current_model = ChessNet().eval()
+        current_model = ChessNet().to(DEVICE).eval()
         print("No checkpoint — bootstrapping with random model")
 
     for gen in range(start_gen, start_gen + generations):
@@ -117,7 +120,7 @@ def run(
         print(f"Saved {gen_ckpt}")
 
         # 4. Pit
-        new_model = new_model.eval()
+        new_model = new_model.to(DEVICE).eval()
         if pit_games == 0:
             promote = True
             print("  Auto-promoting (pit disabled)")
