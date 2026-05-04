@@ -40,12 +40,18 @@ def _elo_ok(game, min_elo: int) -> bool:
 
 
 def _open_pgn(source):
-    """Open a PGN file, transparently decompressing .bz2 / .gz if needed."""
+    """Open a PGN file, transparently decompressing .bz2 / .gz / .zst."""
     if isinstance(source, str):
         if source.endswith(".bz2"):
             return bz2.open(source, "rt", encoding="utf-8", errors="ignore"), True
         if source.endswith(".gz"):
             return gzip.open(source, "rt", encoding="utf-8", errors="ignore"), True
+        if source.endswith(".zst"):
+            import io
+            import zstandard as zstd
+            ctx = zstd.ZstdDecompressor()
+            raw = open(source, "rb")
+            return io.TextIOWrapper(ctx.stream_reader(raw), encoding="utf-8", errors="ignore"), True
         return open(source, encoding="utf-8", errors="ignore"), True
     return source, False  # already a file object, caller manages it
 
